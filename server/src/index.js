@@ -9,13 +9,35 @@ import analyticsRoutes from "./routes/analyticsRoutes.js";
 
 const app = express();
 
+function normalizeOrigin(value) {
+  return String(value || "").trim().replace(/\/+$/, "").toLowerCase();
+}
+
+function matchesAllowedOrigin(origin, allowedOrigin) {
+  if (allowedOrigin.includes("*")) {
+    const regexSafe = allowedOrigin.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+    return new RegExp(`^${regexSafe}$`).test(origin);
+  }
+  return origin === allowedOrigin;
+}
+
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || env.clientOrigins.includes(origin)) {
+      if (!origin) {
         return callback(null, true);
       }
-      return callback(new Error("CORS blocked for this origin"));
+
+      const normalizedOrigin = normalizeOrigin(origin);
+      const allowed = env.clientOrigins.some((configuredOrigin) =>
+        matchesAllowedOrigin(normalizedOrigin, configuredOrigin)
+      );
+
+      if (allowed) {
+        return callback(null, true);
+      }
+
+      return callback(new Error(`CORS blocked for origin: ${normalizedOrigin}`));
     }
   })
 );
