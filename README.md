@@ -98,6 +98,21 @@ This flow is now reflected in the in-app guided stepper UI.
 - Add environment variable in Netlify:
 	- `VITE_API_BASE_URL=https://<your-render-service>.onrender.com/api`
 
+### 2B. Deploy Frontend On Vercel
+
+- Import this repo into Vercel.
+- In project settings, set `Root Directory` to `client`.
+- Vercel will detect Vite automatically (config is in `client/vercel.json`).
+- Add environment variable in Vercel:
+  - `VITE_API_BASE_URL=https://<your-render-service>.onrender.com/api`
+- Deploy.
+
+After deploy, copy your Vercel domain and update backend CORS on Render:
+
+- `CLIENT_ORIGINS=https://<your-vercel-domain>.vercel.app`
+
+If you have both Vercel and Netlify, provide comma-separated values in `CLIENT_ORIGINS`.
+
 ### 3. Update CORS After Frontend URL Is Final
 
 - Ensure Render `CLIENT_ORIGINS` exactly includes your Netlify domain.
