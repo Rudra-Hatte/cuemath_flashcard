@@ -8,10 +8,19 @@ const router = express.Router();
 
 router.post("/submit", async (req, res) => {
   try {
-    const { cardId, isCorrect, confidence, timeTakenSeconds, mistakeType } = req.body;
-    if (!cardId || typeof isCorrect !== "boolean" || !confidence) {
+    const {
+      cardId,
+      isCorrect,
+      confidence,
+      timeTakenSeconds,
+      mistakeType,
+      reviewMode,
+      selectedOptionIndex,
+      selectedOptionText
+    } = req.body;
+    if (!cardId || !confidence) {
       return res.status(400).json({
-        error: "cardId, isCorrect(boolean), confidence(easy|medium|hard) are required"
+        error: "cardId and confidence(easy|medium|hard) are required"
       });
     }
 
@@ -20,13 +29,32 @@ router.post("/submit", async (req, res) => {
       return res.status(404).json({ error: "Card not found" });
     }
 
+    if (!card.isMcq && typeof isCorrect !== "boolean") {
+      return res.status(400).json({
+        error: "isCorrect(boolean) is required for non-MCQ reviews"
+      });
+    }
+
+    let resolvedIsCorrect = isCorrect;
+    if (card.isMcq && Number.isInteger(selectedOptionIndex) && card.correctOptionIndex >= 0) {
+      resolvedIsCorrect = selectedOptionIndex === card.correctOptionIndex;
+    }
+
+    if (typeof resolvedIsCorrect !== "boolean") {
+      return res.status(400).json({
+        error: "Unable to resolve correctness for this review"
+      });
+    }
+
+    const resolvedMistakeType = resolvedIsCorrect ? "none" : (mistakeType || "concept");
+
     const existing = await Progress.findOne({ cardId });
     const next = computeNextSm2State({
       prev: existing,
-      isCorrect,
+      isCorrect: resolvedIsCorrect,
       confidence,
       timeTakenSeconds: Number(timeTakenSeconds || 0),
-      mistakeType: mistakeType || "none"
+      mistakeType: resolvedMistakeType
     });
 
     const progress = await Progress.findOneAndUpdate(
@@ -40,7 +68,7 @@ router.post("/submit", async (req, res) => {
         lastReviewedAt: new Date(),
         $inc: {
           totalAttempts: 1,
-          correctAttempts: isCorrect ? 1 : 0
+          correctAttempts: resolvedIsCorrect ? 1 : 0
         }
       },
       { upsert: true, new: true }
@@ -49,10 +77,13 @@ router.post("/submit", async (req, res) => {
     await ReviewEvent.create({
       cardId,
       deckId: card.deckId,
-      isCorrect,
+      isCorrect: resolvedIsCorrect,
       confidence,
       timeTakenSeconds: Number(timeTakenSeconds || 0),
-      mistakeType: mistakeType || "none"
+      reviewMode: reviewMode === "mcq" ? "mcq" : "flashcard",
+      selectedOptionIndex: Number.isInteger(selectedOptionIndex) ? selectedOptionIndex : null,
+      selectedOptionText: typeof selectedOptionText === "string" ? selectedOptionText : "",
+      mistakeType: resolvedMistakeType
     });
 
     return res.json({ progress });

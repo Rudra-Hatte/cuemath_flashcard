@@ -54,6 +54,8 @@ export default function App() {
   const [showSolution, setShowSolution] = useState(false);
   const [timeStartedAt, setTimeStartedAt] = useState(Date.now());
   const [selectedMistakeType, setSelectedMistakeType] = useState("concept");
+  const [selectedOptionIndex, setSelectedOptionIndex] = useState(null);
+  const [mcqFeedback, setMcqFeedback] = useState(null);
   const [tourOpen, setTourOpen] = useState(false);
   const [tourIndex, setTourIndex] = useState(0);
   const [highlightRect, setHighlightRect] = useState(null);
@@ -128,6 +130,8 @@ export default function App() {
         setAnalytics(stats);
         setCurrentIndex(0);
         setShowSolution(false);
+        setSelectedOptionIndex(null);
+        setMcqFeedback(null);
         setTimeStartedAt(Date.now());
       })
       .catch((e) => setStatus(e.message));
@@ -216,6 +220,8 @@ export default function App() {
       setAnalytics(stats);
       setCurrentIndex(0);
       setShowSolution(false);
+      setSelectedOptionIndex(null);
+      setMcqFeedback(null);
       setTimeStartedAt(Date.now());
       setStatus(`Generated ${dueCards.length} cards`);
       triggerCelebration("cards");
@@ -224,20 +230,27 @@ export default function App() {
     }
   }
 
-  async function onSubmitReview(confidence, mistakeType) {
+  async function onSubmitReview(confidence, mistakeType, overrides = {}) {
     if (!currentCard) {
       return;
     }
     try {
       const elapsed = Math.round((Date.now() - timeStartedAt) / 1000);
-      const isCorrect = confidence !== "hard";
+      const resolvedIsCorrect =
+        typeof overrides.isCorrect === "boolean"
+          ? overrides.isCorrect
+          : confidence !== "hard";
 
       await submitReview({
         cardId: currentCard._id,
-        isCorrect,
+        isCorrect: resolvedIsCorrect,
         confidence,
-        timeTakenSeconds: elapsed,
-        mistakeType: isCorrect ? "none" : mistakeType
+        timeTakenSeconds: overrides.timeTakenSeconds ?? elapsed,
+        mistakeType: resolvedIsCorrect ? "none" : mistakeType,
+        reviewMode: overrides.reviewMode || "flashcard",
+        selectedOptionIndex:
+          Number.isInteger(overrides.selectedOptionIndex) ? overrides.selectedOptionIndex : undefined,
+        selectedOptionText: overrides.selectedOptionText || ""
       });
 
       const [dueCards, stats] = await Promise.all([
@@ -250,11 +263,37 @@ export default function App() {
       setCurrentIndex((prev) => (prev + 1 >= dueCards.length ? 0 : prev + 1));
       setShowSolution(false);
       setSelectedMistakeType("concept");
+      setSelectedOptionIndex(null);
+      setMcqFeedback(null);
       setTimeStartedAt(Date.now());
       setStatus("Review saved and schedule updated");
     } catch (e) {
       setStatus(e.message);
     }
+  }
+
+  async function onSubmitMcqAnswer() {
+    if (!currentCard || !currentCard.isMcq || selectedOptionIndex === null) {
+      return;
+    }
+
+    const elapsed = Math.round((Date.now() - timeStartedAt) / 1000);
+    const isCorrect = selectedOptionIndex === currentCard.correctOptionIndex;
+    const confidence = isCorrect ? "medium" : "hard";
+    const mistakeType = isCorrect ? "none" : selectedMistakeType;
+
+    setMcqFeedback({
+      isCorrect,
+      correctOptionIndex: currentCard.correctOptionIndex
+    });
+
+    await onSubmitReview(confidence, mistakeType, {
+      isCorrect,
+      timeTakenSeconds: elapsed,
+      reviewMode: "mcq",
+      selectedOptionIndex,
+      selectedOptionText: currentCard.options?.[selectedOptionIndex] || ""
+    });
   }
 
   function formatStepState(step) {
@@ -372,6 +411,7 @@ export default function App() {
         <div className="glass-card" ref={workspaceRef}>
           <h2>Workspace Control</h2>
           <select
+            className="modern-select"
             value={selectedDeckId}
             onChange={(e) => setSelectedDeckId(e.target.value)}
           >
@@ -411,7 +451,42 @@ export default function App() {
               </div>
               <p className="question">{currentCard.question}</p>
 
-              {currentCard.type === "step_problem" ? (
+              {currentCard.isMcq && Array.isArray(currentCard.options) && currentCard.options.length > 0 && (
+                <div className="mcq-wrap">
+                  <p className="muted">Choose one option:</p>
+                  <div className="mcq-options">
+                    {currentCard.options.map((option, idx) => {
+                      const isSelected = selectedOptionIndex === idx;
+                      const isCorrectOption = mcqFeedback?.correctOptionIndex === idx;
+                      const wasWrongPick = mcqFeedback && isSelected && !mcqFeedback.isCorrect;
+
+                      return (
+                        <button
+                          key={`${currentCard._id}-opt-${idx}`}
+                          className={`mcq-option ${isSelected ? "selected" : ""} ${isCorrectOption ? "correct" : ""} ${wasWrongPick ? "wrong" : ""}`}
+                          onClick={() => setSelectedOptionIndex(idx)}
+                          disabled={Boolean(mcqFeedback)}
+                        >
+                          <span className="mcq-badge">{String.fromCharCode(65 + idx)}</span>
+                          <span>{option}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {!mcqFeedback && (
+                    <button
+                      className="ghost"
+                      disabled={selectedOptionIndex === null}
+                      onClick={onSubmitMcqAnswer}
+                    >
+                      Submit MCQ Answer
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {!currentCard.isMcq && currentCard.type === "step_problem" ? (
                 <div className="steps">
                   {currentCard.steps.map((step, idx) => (
                     <p key={idx} className={showSolution ? "visible" : "hidden-step"}>
@@ -419,15 +494,15 @@ export default function App() {
                     </p>
                   ))}
                 </div>
-              ) : (
+              ) : !currentCard.isMcq ? (
                 <p className={showSolution ? "answer visible" : "answer hidden-step"}>
                   {currentCard.answer}
                 </p>
-              )}
+              ) : null}
 
-              {!showSolution ? (
+              {!currentCard.isMcq && !showSolution ? (
                 <button onClick={() => setShowSolution(true)}>Reveal Next Step / Answer</button>
-              ) : (
+              ) : !currentCard.isMcq ? (
                 <div className="actions">
                   {confidenceOptions.map((confidence) => (
                     <button
@@ -438,7 +513,7 @@ export default function App() {
                       {confidence}
                     </button>
                   ))}
-                  <select value={selectedMistakeType} onChange={(e) => setSelectedMistakeType(e.target.value)}>
+                  <select className="modern-select" value={selectedMistakeType} onChange={(e) => setSelectedMistakeType(e.target.value)}>
                     {mistakeOptions.map((m) => (
                       <option key={m} value={m}>{m}</option>
                     ))}
@@ -450,7 +525,7 @@ export default function App() {
                     Mark Wrong
                   </button>
                 </div>
-              )}
+              ) : null}
             </div>
           )}
         </div>

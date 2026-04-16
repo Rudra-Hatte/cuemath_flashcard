@@ -12,6 +12,13 @@ const reviewEventSchema = new mongoose.Schema(
       required: true
     },
     timeTakenSeconds: { type: Number, default: 0 },
+    reviewMode: {
+      type: String,
+      enum: ["flashcard", "mcq"],
+      default: "flashcard"
+    },
+    selectedOptionIndex: { type: Number, default: null },
+    selectedOptionText: { type: String, default: "" },
     mistakeType: {
       type: String,
       enum: ["none", "concept", "calculation", "careless"],

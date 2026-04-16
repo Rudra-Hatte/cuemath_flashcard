@@ -10,9 +10,13 @@ Return strict JSON with key "cards" and each card containing:
 - hint
 - commonError (for mistake cards)
 - explanation
+- isMcq (boolean)
+- options (array of 4 options for MCQ cards)
+- correctOptionIndex (0-based integer for MCQ cards)
 - difficulty (1-5)
 - tags (array)
-Generate 20 cards with mixed types and realistic math pedagogy.`;
+Generate 20 cards with mixed types and realistic math pedagogy.
+At least 6 cards should be MCQ with plausible distractors.`;
 
 function fallbackCards(topic, sourceText) {
   const snippet = sourceText.slice(0, 250);
@@ -23,6 +27,9 @@ function fallbackCards(topic, sourceText) {
       question: `What is the core idea behind ${topic}?`,
       answer: `The core idea is to identify structure and apply the correct rules systematically.`,
       steps: [],
+      isMcq: false,
+      options: [],
+      correctOptionIndex: -1,
       hint: "Think about definition, formula, and when to use it.",
       commonError: "",
       explanation: `Use this source reminder: ${snippet}`,
@@ -40,6 +47,9 @@ function fallbackCards(topic, sourceText) {
         "Substitute values and simplify carefully.",
         "Check units/signs and verify reasonableness."
       ],
+      isMcq: false,
+      options: [],
+      correctOptionIndex: -1,
       hint: "Do not skip algebraic simplification.",
       commonError: "",
       explanation: "Step discipline reduces careless errors.",
@@ -52,11 +62,29 @@ function fallbackCards(topic, sourceText) {
       question: `Common trap in ${topic}: what often goes wrong?`,
       answer: "Students often apply the right formula with sign or arithmetic mistakes.",
       steps: [],
+      isMcq: false,
+      options: [],
+      correctOptionIndex: -1,
       hint: "Track minus signs line by line.",
       commonError: "Sign handling in intermediate simplification.",
       explanation: "Re-check every distribution and subtraction.",
       difficulty: 3,
       tags: [topic, "mistake-pattern"]
+    },
+    {
+      type: "application",
+      concept: topic,
+      question: `A ball is thrown upward with velocity 20 m/s and follows h(t) = -5t^2 + 20t. When does it hit the ground?`,
+      answer: "t = 4 seconds",
+      steps: [],
+      isMcq: true,
+      options: ["t = 2 seconds", "t = 4 seconds", "t = 5 seconds", "t = 10 seconds"],
+      correctOptionIndex: 1,
+      hint: "Set h(t)=0 and factor.",
+      commonError: "Forgetting both roots and choosing t=0.",
+      explanation: "-5t(t-4)=0 gives t=0 and t=4, but landing time is t=4.",
+      difficulty: 2,
+      tags: [topic, "mcq", "application"]
     }
   ];
 }

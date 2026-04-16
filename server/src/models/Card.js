@@ -15,6 +15,9 @@ const cardSchema = new mongoose.Schema(
     hint: { type: String, default: "" },
     commonError: { type: String, default: "" },
     explanation: { type: String, default: "" },
+    isMcq: { type: Boolean, default: false },
+    options: { type: [String], default: [] },
+    correctOptionIndex: { type: Number, default: -1 },
     difficulty: { type: Number, default: 3, min: 1, max: 5 },
     tags: { type: [String], default: [] }
   },

@@ -46,19 +46,32 @@ router.post("/generate", async (req, res) => {
     await Card.deleteMany({ deckId: deck._id });
 
     const cards = await Card.insertMany(
-      generated.map((card) => ({
-        deckId: deck._id,
-        type: card.type,
-        concept: card.concept || deck.topic,
-        question: card.question,
-        answer: card.answer || "",
-        steps: Array.isArray(card.steps) ? card.steps : [],
-        hint: card.hint || "",
-        commonError: card.commonError || "",
-        explanation: card.explanation || "",
-        difficulty: Number(card.difficulty || 3),
-        tags: Array.isArray(card.tags) ? card.tags : []
-      }))
+      generated.map((card) => {
+        const options = Array.isArray(card.options)
+          ? card.options.filter((opt) => typeof opt === "string" && opt.trim()).map((opt) => opt.trim())
+          : [];
+        const hasValidCorrectIndex = Number.isInteger(card.correctOptionIndex)
+          && card.correctOptionIndex >= 0
+          && card.correctOptionIndex < options.length;
+        const isMcq = Boolean(card.isMcq) || (options.length >= 2 && hasValidCorrectIndex);
+
+        return {
+          deckId: deck._id,
+          type: card.type,
+          concept: card.concept || deck.topic,
+          question: card.question,
+          answer: card.answer || (isMcq && hasValidCorrectIndex ? options[card.correctOptionIndex] : ""),
+          steps: Array.isArray(card.steps) ? card.steps : [],
+          hint: card.hint || "",
+          commonError: card.commonError || "",
+          explanation: card.explanation || "",
+          isMcq,
+          options,
+          correctOptionIndex: isMcq && hasValidCorrectIndex ? card.correctOptionIndex : -1,
+          difficulty: Number(card.difficulty || 3),
+          tags: Array.isArray(card.tags) ? card.tags : []
+        };
+      })
     );
 
     return res.json({ count: cards.length, cards });
