@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import { env } from "../config/env.js";
 
 const SYSTEM_PROMPT = `You are an expert math teacher. Create high-quality adaptive flashcards from source material.
@@ -63,24 +62,52 @@ function fallbackCards(topic, sourceText) {
 }
 
 export async function generateCardsWithAi({ topic, sourceText }) {
-  if (!env.openAiApiKey) {
+  if (!env.geminiApiKey) {
     return fallbackCards(topic, sourceText);
   }
 
-  const client = new OpenAI({ apiKey: env.openAiApiKey });
-  const userPrompt = `Topic: ${topic}\nSource:\n${sourceText.slice(0, 12000)}`;
+  const prompt = `${SYSTEM_PROMPT}\n\nTopic: ${topic}\nSource:\n${sourceText.slice(0, 12000)}`;
 
-  const completion = await client.chat.completions.create({
-    model: env.openAiModel,
-    temperature: 0.3,
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: userPrompt }
-    ],
-    response_format: { type: "json_object" }
-  });
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(env.geminiModel)}:generateContent?key=${env.geminiApiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: prompt }]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.3,
+          responseMimeType: "application/json"
+        }
+      })
+    }
+  );
 
-  const raw = completion.choices?.[0]?.message?.content || "{}";
-  const parsed = JSON.parse(raw);
+  if (!response.ok) {
+    return fallbackCards(topic, sourceText);
+  }
+
+  const payload = await response.json();
+  const raw =
+    payload?.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text || "")
+      .join("\n")
+      ?.trim() || "";
+
+  let parsed;
+  try {
+    const cleaned = raw.startsWith("```")
+      ? raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim()
+      : raw;
+    parsed = JSON.parse(cleaned || "{}");
+  } catch {
+    parsed = {};
+  }
+
   return Array.isArray(parsed.cards) ? parsed.cards : fallbackCards(topic, sourceText);
 }

@@ -9,7 +9,16 @@ import analyticsRoutes from "./routes/analyticsRoutes.js";
 
 const app = express();
 
-app.use(cors({ origin: env.clientOrigin }));
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || env.clientOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error("CORS blocked for this origin"));
+    }
+  })
+);
 app.use(express.json({ limit: "2mb" }));
 
 app.get("/health", (_req, res) => {
